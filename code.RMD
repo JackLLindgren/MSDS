@@ -1,0 +1,121 @@
+---
+title: "NYPDShootingIncidents"
+author: "J. Lindgren"
+date: "2023-11-28"
+output:
+  html_document: default
+  pdf_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+List of every shooting incident that occurred in NYC from 2006 through the end of the previous calendar year.
+
+
+## Step 0: Import Library
+
+```{r library, message=FALSE, warning=FALSE}
+# Necessary Packages
+library(tidyverse)
+library(lubridate)
+```
+
+## Step 1: Load Data
+
+
+```{r load}
+df = read_csv("https://data.cityofnewyork.us/api/views/833y-fsy8/rows.csv?accessType=DOWNLOAD")
+head(df)
+```
+
+## Step 2: Tidy and Transform Data
+
+Remove data that will not be used in this assignment
+
+```{r}
+df_2 = df %>% select(INCIDENT_KEY, 
+                   OCCUR_DATE,
+                   OCCUR_TIME,
+                   BORO)
+
+# Return the column name along with the missing values
+lapply(df_2, function(x) sum(is.na(x)))
+```
+
+
+```{r}
+# Tidy and transform data
+# Remove extreme values in data
+
+df_2$INCIDENT_KEY = as.character(df_2$INCIDENT_KEY)
+df_2$BORO = as.factor(df_2$BORO)
+
+# Return summary statistics
+summary(df_2)
+```
+
+## Step 3: Add Visualizations and Analysis
+
+
+### 1. Which Borough of New York has the most number of incidents? 
+
+
+```{r}
+g <- ggplot(df_2, aes(x = BORO)) +
+  geom_bar() +
+  labs(title = "Incidents by Borough",
+       x = "Boroughs of New York City",
+       y = "Count of Incidents") +
+  theme_classic()
+g
+```
+The most number of incidents occured in Brooklyn followed by Bronx, Queens, Manhatten, and Staten Island respectively. Many things could contribute to this statistic and should be viewed more nuanced than simly "more incidents means its more dangerous". An important comparison should as factor things such as population. For example, in 2020, the population in Brooklyn was 2.5 million while the Bronx was at 1.5 million, indicating that brooklyn may not necessarily have the most incidents per resident.
+
+```{r}
+df_2$OCCUR_DAY = mdy(df_2$OCCUR_DATE)
+df_2$OCCUR_DAY = wday(df_2$OCCUR_DAY, label = TRUE)
+df_2$OCCUR_HOUR = hour(hms(as.character(df_2$OCCUR_TIME)))
+
+df_3 = df_2 %>%
+  group_by(OCCUR_DAY) %>%
+  count()
+
+df_4 = df_2 %>%
+  group_by(OCCUR_HOUR) %>%
+  count()
+```
+### 2. Which day and time has the highest rate of incidents?
+```{r}
+g <- ggplot(df_4, aes(x = OCCUR_HOUR, y = n)) +
+  geom_line() +
+  labs(title = "What time do incidents occur?",
+       x = "Time of Incident",
+       y = "# of Incidents") +
+  theme_classic()
+g
+```
+
+Most incidents occur at night with a sharp drop off around 4-5 A.M. followed by a steady increase from around 9 A.M. to midnight. This makes some intuitive sense as crime in general sees a trend of lower incidents during the daylight versus at night. It is interesting to see that the rate of incidents does begin to rise during the day as early as about 9 A.M.
+
+
+
+
+
+
+```{r}
+g <- ggplot(df_3, aes(x = OCCUR_DAY, y = n)) +
+  geom_col() +
+  labs(title = "What day of the week is the most dangerous?",
+       x = "Day of the week",
+       y = "# of Incidents") +
+  theme_classic()
+g
+```
+
+The weekends have far more incidents than weekdays.This is another case where intuition would point to the likelihood that more incidents occur on weekends as the majority of people will be working and doing other activities during weekdays that would prevent them from getting involved in incidents.
+
+### Step 4: Identify Bias
+
+Investigating crime data is full of possible biases. Since crime rates can be such a politically charged area, it is important to counter your own biases. In this case, I found myself expecting the data to show the Bronx as having the highest number of incidents as this is what I have come to expect from pop-culture and media. However, I did not use this bias to try and "fix" my data to show that. It does however spur other questions such as what is the rate of incidents per population over time? This would require more data but would be how I would continue doing research in this area.Its important to note as well that although I have conjectured possible explanations for the trends seen, these are only hypothesis and would have to be examined in detail to insure their efficacy.
