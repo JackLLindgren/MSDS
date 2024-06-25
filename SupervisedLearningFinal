@@ -1,0 +1,160 @@
+#Import Functions
+
+import numpy as np
+import pandas as pd
+import seaborn as sns
+import matplotlib.pyplot as plt
+from sklearn.preprocessing import LabelEncoder
+from sklearn.model_selection import train_test_split, GridSearchCV
+from sklearn.tree import DecisionTreeClassifier
+from sklearn.metrics import accuracy_score, classification_report, confusion_matrix
+from xgboost import XGBClassifier
+import altair as alt
+import webbrowser
+
+df = pd.read_csv("Dry_Bean_Dataset.csv")
+
+# Explore basic information
+print(df.head())  # First few rows
+print(df.info())   # Column names and data types
+print(df.describe())  # Summary statistics for numeric columns
+
+# Handle missing values (e.g., drop rows with missing values)
+df.dropna(inplace=True)
+
+
+# Here we can see that the data seems to be clean and we dropped any empy data points just to be safe.
+#Now lets make a basic algorithm to see if it can predict the type of bean
+
+########################################################
+
+X = df.drop("Class", axis=1)
+y = df["Class"]
+
+le = LabelEncoder()
+y = le.fit_transform(y)
+
+X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
+
+# 2. Train Decision Tree Model
+model = DecisionTreeClassifier()
+model.fit(X_train, y_train)
+
+# 3. Make Predictions
+y_pred = model.predict(X_test)
+
+# 4. Evaluate Model
+accuracy = accuracy_score(y_test, y_pred)
+print("Accuracy:", accuracy)
+print(classification_report(y_test, y_pred, target_names=le.classes_))
+
+# Some interesting data here with success rates between 83 and 100 percent! Lets take a look at what is being confused!
+#Note that we set the diagnals to 0 to emphasize errors that were made
+##################################################################
+
+conf_matrix = confusion_matrix(y_test, y_pred)
+
+# Create DataFrame for better visualization
+conf_matrix = confusion_matrix(y_test, y_pred)
+conf_matrix_df = pd.DataFrame(conf_matrix, index=le.classes_, columns=le.classes_)
+
+# 6. Mask the Diagonal (Correct Predictions)
+np.fill_diagonal(conf_matrix, 0)  # Set diagonal elements to zero
+
+# 7. Create Heatmap with Masked Diagonal
+plt.figure(figsize=(10, 8))  # Adjust figure size if needed
+sns.heatmap(conf_matrix_df, annot=True, fmt='d', cmap='Reds', cbar=False)  # Remove colorbar
+plt.title('Confusion Matrix for Bean Classification (Errors Only, Random Forest)')
+plt.xlabel('Predicted Class')
+plt.ylabel('True Class')
+plt.show()
+# Wow! looks like the algorithm is having the hardest time distinguising between Cali and Barbunya beans and between Sira and Dermason beans.
+# Hmmm, it looks like we have a 100% hit rate on one of our beans, lets see if theres a reason for that or if perhaps there is an error in our code leaking the answers!
+#####################################################3###
+numerical_cols = df.select_dtypes(include=np.number).columns
+
+# 3. Calculate Averages by Class
+class_averages = df.groupby("Class")[numerical_cols].mean()
+
+# 4. Print Results
+print("Average Feature Values for Each Bean Class:\n")
+print(class_averages)
+#Looks like Bombay beans have an average area of more than twice that of the other beans, that likely explains the ease of classification
+#lets make a graph of the average area by class to visualize this difference
+class_summary = df.groupby("Class")["Area"].agg(["mean", "std"])
+
+# 3. Prepare Data for Chart
+# Reset index for Altair
+area_data = class_summary.reset_index()
+# Rename columns for clarity
+area_data = area_data.rename(columns={"mean": "Average Area", "std": "StdDev"})
+
+# 4. Create Scatter Plot with Error Bars using Altair
+chart = alt.Chart(area_data).mark_point().encode(
+    x=alt.X('Class:N', axis=alt.Axis(title='Bean Class', labelAngle=-45)),
+    y=alt.Y('Average Area:Q', axis=alt.Axis(title='Average Area')),
+    tooltip=['Class', 'Average Area', 'StdDev']
+).properties(
+    title='Average Area with Error Bars by Bean Class'
+).interactive()
+
+# Add error bars
+error_bars = chart.mark_errorbar(extent='stderr').encode(
+    yError='StdDev:Q'
+)
+
+# Combine the chart and error bars
+final_chart = chart + error_bars
+
+# 5. Save Chart to Temporary HTML File
+final_chart.save('temp_chart.html')
+
+# 6. Open Chart in Browser
+webbrowser.open('temp_chart.html')
+
+#Lets use a stronger algorithm that utilizes boosting. We will also be testing different parameters to find the ideal ones for our model.
+###############################################################
+
+model = XGBClassifier()
+param_grid = {
+    'n_estimators': [50, 100, 150],
+    'max_depth': [3, 4, 5],
+    'learning_rate': [0.01, 0.1, 0.2]
+}
+
+# 3. Hyperparameter Tuning (Grid Search)
+grid_search = GridSearchCV(model, param_grid, scoring='accuracy', cv=5,)
+grid_search.fit(X_train, y_train)
+best_params = grid_search.best_params_
+print("Best Parameters:", best_params)
+
+# 4. Train Model with Best Parameters
+best_model = XGBClassifier(**best_params)
+best_model.fit(X_train, y_train)
+
+# 5. Make Predictions
+y_pred = best_model.predict(X_test)
+
+# 6. Evaluate Model
+accuracy = accuracy_score(y_test, y_pred)
+print("Accuracy:", accuracy)
+print(classification_report(y_test, y_pred, target_names=le.classes_))
+
+# 7. Create Confusion Matrix
+conf_matrix = confusion_matrix(y_test, y_pred)
+conf_matrix_df = pd.DataFrame(conf_matrix, index=le.classes_, columns=le.classes_)
+
+# 6. Mask the Diagonal (Correct Predictions)
+np.fill_diagonal(conf_matrix, 0)  # Set diagonal elements to zero
+
+# 7. Create Heatmap with Masked Diagonal
+plt.figure(figsize=(10, 8))  # Adjust figure size if needed
+sns.heatmap(conf_matrix_df, annot=True, fmt='d', cmap='Reds', cbar=False)  # Remove colorbar
+plt.title('Confusion Matrix for Bean Classification (Errors Only, Boosted Random Forest)')
+plt.xlabel('Predicted Class')
+plt.ylabel('True Class')
+plt.show()
+#Looks like we managed to signficantly increas the quality of our model from an accuracy of 89.05% to 93.13%!
+#additionally our biggest errors reduced by about 1/2 for Cali vs Barbunya and Sira vs Horoz.
+#This shows the importance of parameter tuning ad the quality that can be gained from using a boosted model!
+############################################################
