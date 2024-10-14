@@ -1,0 +1,294 @@
+# Import necessary libraries
+import pandas as pd
+import numpy as np
+import matplotlib.pyplot as plt
+import seaborn as sns
+
+# Load the dataset  
+
+df = pd.read_csv('data/creditcard.csv')
+
+
+# Display the first 5 rows of the dataset
+print(df.head().to_markdown(index=False, numalign="left", stralign="left"))
+
+# Get the shape of the dataset
+print(f"\nShape of the dataset: {df.shape}")
+
+# Get information about the columns and their data types
+print(df.info())
+
+# Check for missing values
+print(f"\nMissing values:\n{df.isnull().sum()}")
+
+# Describe the numerical features
+print(df.describe().to_markdown(numalign="left", stralign="left"))
+
+# Visualize the distribution of the target variable ('Class')
+sns.countplot(x='Class', data=df)
+plt.title('Class Distribution')
+plt.show()
+
+# Calculate the percentage of fraudulent transactions
+fraud_percentage = df['Class'].value_counts()[1] / len(df) * 100
+print(f"Percentage of fraudulent transactions: {fraud_percentage:.2f}%")
+
+# Visualize the distribution of the 'Amount' feature
+sns.histplot(df['Amount'], bins=50)
+plt.title('Distribution of Transaction Amount')
+plt.xlabel('Amount')
+plt.ylabel('Frequency')
+plt.show()
+
+# Visualize the distribution of the 'Time' feature
+sns.histplot(df['Time'], bins=50)
+plt.title('Distribution of Transaction Time')
+plt.xlabel('Time (in seconds)')
+plt.ylabel('Frequency')
+plt.show()
+
+# Calculate the correlation matrix
+corr = df.corr()
+
+# Zero out the diagonal
+np.fill_diagonal(corr.values, 0)
+
+# Plot the heatmap
+plt.figure(figsize=(12, 10))
+sns.heatmap(corr, cmap='coolwarm', annot=False)
+plt.title('Correlation Matrix')
+plt.show()
+
+# Explore the relationship between 'Amount' and 'Class'
+sns.boxplot(x='Class', y='Amount', data=df)
+plt.title('Transaction Amount by Class')
+plt.ylim(0, 500)  # Adjust the y-axis limit for better visualization
+plt.show()
+
+# Explore the relationship between 'Time' and 'Class'
+sns.scatterplot(x='Time', y='Class', data=df)
+plt.title('Transaction Time vs Class')
+plt.show()
+
+
+#%%
+'''
+This initial Exploratory Data Analysis (EDA) has provided a foundational understanding of the credit card fraud dataset. 
+Key findings include:
+
+* Dataset Size and Structure: The dataset is substantial, with 284,807 transactions and 31 features.  
+Most features are anonymized principal components (V1-V28) derived from a PCA transformation, 
+along with 'Time', 'Amount', and the binary 'Class' (fraudulent or not).
+
+* Data Completeness:  A significant advantage is the absence of missing values, simplifying preprocessing.
+
+* Data Types: All features are numeric, with 'Class' being the categorical target variable.
+
+* Descriptive Statistics:  The `df.describe()` output reveals the range and distribution of values for each feature. 
+Notably, 'Amount' has a wide range and a right-skewed distribution, indicating potential outliers.
+
+* Class Imbalance: A critical observation is the severe class imbalance. Only 0.17% of transactions are fraudulent. 
+This imbalance poses a significant challenge for analysis and model building, as it can bias results towards the 
+majority (non-fraudulent) class.
+
+
+Next Steps:
+
+To address the class imbalance and improve the visibility of fraudulent transaction patterns, the next phase of EDA will focus on:
+
+* Visualizing the Minority Class: Techniques such as separate plots for each class, zooming in on relevant regions, 
+and potentially using sampling will be employed to highlight the characteristics of fraudulent transactions.
+
+* Enhancing Visualizations: Logarithmic scales, distinct colors, transparency adjustments, and alternative plot types 
+will be used to make the patterns of the minority class more apparent.
+
+This deeper dive into the data will facilitate a more nuanced understanding of fraudulent behavior and inform the 
+selection and training of appropriate unsupervised learning models for fraud detection.
+'''
+#%%
+# Separate visualizations for each class
+plt.figure(figsize=(12, 6))
+
+plt.subplot(1, 2, 1)
+sns.histplot(df[df['Class'] == 0]['Amount'], bins=50, kde=True, color='blue')
+plt.title('Distribution of Amount (Non-Fraudulent)')
+plt.xlabel('Amount')
+plt.ylabel('Frequency')
+
+plt.subplot(1, 2, 2)
+sns.histplot(df[df['Class'] == 1]['Amount'], bins=50, kde=True, color='red')
+plt.title('Distribution of Amount (Fraudulent)')
+plt.xlabel('Amount')
+plt.ylabel('Frequency')
+
+plt.tight_layout()
+plt.show()
+
+# Zoom in on the region with fraudulent transactions
+plt.figure(figsize=(10, 6))
+sns.scatterplot(x='Time', y='Amount', hue='Class', data=df, alpha=0.5)
+plt.title('Transaction Time vs Amount')
+plt.xlim(0, 50000)  # Adjust xlim as needed
+plt.ylim(0, 2000)   # Adjust ylim as needed
+plt.show()
+
+# Use a logarithmic scale for the 'Amount' axis
+plt.figure(figsize=(10, 6))
+sns.boxplot(x='Class', y='Amount', data=df, hue='Class', palette=['blue', 'red'], legend=False)
+plt.title('Transaction Amount by Class (Log Scale)')
+plt.yscale('log')
+plt.show()
+#%%
+'''
+Enhanced EDA: Unveiling Fraudulent Patterns
+
+The enhanced EDA techniques, focusing on visualizing the minority class and improving graph readability, have revealed insightful patterns in the credit card fraud dataset:
+
+* Amount and Fraud:  Separate histograms for fraudulent and non-fraudulent transactions reveal a more nuanced relationship between transaction amount and fraud. While non-fraudulent transactions show a wide range of amounts with a concentration towards lower values, fraudulent transactions seem to exhibit a more uniform distribution across different amount ranges, with a slight peak around the 500 mark. This is further supported by the box plot, which shows a similar median transaction amount for both classes but a wider spread for fraudulent transactions, including some high-value outliers. 
+
+* Time and Fraud:  While the "Transaction Time vs Amount" scatter plot doesn't show a clear, isolated time-based pattern, it does hint at potential clustering of fraudulent transactions within certain time intervals and amount ranges. This suggests that there might be subtle time-related factors or combined time-amount relationships that warrant further investigation.
+
+* Outlier Analysis:  Box plots with a logarithmic scale highlight the presence of outliers, especially in the 'Amount' feature for both classes. These outliers could represent high-value fraudulent transactions or simply unusual spending patterns. Analyzing these outliers might uncover specific fraud scenarios or require special handling in model training.
+
+These insights, derived from the enhanced visualizations, provide a more granular understanding of fraudulent behavior. This knowledge will guide feature engineering, model selection, and the development of more effective fraud detection strategies. 
+'''
+#%%
+from sklearn.cluster import KMeans
+from sklearn.preprocessing import StandardScaler
+
+# Assuming you have selected features and stored them in X
+# 1. Select features based on correlation and visualization analysis
+#features = ['V14', 'V17', 'V11', 'V4', 'V10', 'V12', 'V16', 'V2', 'V7', 'V20', 'Amount', 'Time']
+#X = df[features].copy()
+X = df.drop('Class', axis=1).copy()  # Use all columns except the target variable
+y = df['Class'] 
+
+X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
+
+scaler = StandardScaler()
+X_train = scaler.fit_transform(X_train)
+X_test = scaler.transform(X_test)
+
+# Train a K-means model with k=5 (example)
+X_train_kmeans = X_train  # This line is the fix 
+X_test_kmeans = X_test 
+
+kmeans = KMeans(n_clusters=5, random_state=42)
+kmeans.fit(X_train_kmeans)
+labels = kmeans.labels_
+
+# Visualize the clusters (example using PCA for dimensionality reduction)
+from sklearn.decomposition import PCA
+pca = PCA(n_components=2)
+X_pca = pca.fit_transform(X_train_kmeans)  
+
+plt.scatter(X_pca[:, 0], X_pca[:, 1], c=labels)
+plt.title('K-means Clustering')
+plt.show()
+from sklearn.model_selection import train_test_split
+
+# Define the target variable 
+y = df['Class'] 
+
+# Split the data
+X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
+
+from sklearn.preprocessing import StandardScaler
+scaler = StandardScaler()
+X_train = scaler.fit_transform(X_train)
+X_test = scaler.transform(X_test)  # Use the same scaler fitted on the training data
+
+from sklearn.linear_model import LogisticRegression  # Example model
+model_lr = LogisticRegression(random_state=42)
+model_lr.fit(X_train, y_train)
+y_pred_lr = model_lr.predict(X_test)  
+
+
+from sklearn.metrics import classification_report, roc_auc_score, confusion_matrix
+
+print(classification_report(y_test, y_pred_lr))  # Use y_pred_lr here
+print("AUC-ROC Score:", roc_auc_score(y_test, y_pred_lr))  # Use y_pred_lr here
+print("Confusion Matrix:\n", confusion_matrix(y_test, y_pred_lr))  # Use y_pred_lr here
+#%%
+from sklearn.svm import OneClassSVM  # Import from scikit-learn
+from sklearn.metrics import recall_score, precision_score, f1_score, fbeta_score, confusion_matrix
+
+# ... (your feature selection and scaling code) ...
+
+# Initialize the model with initial hyperparameters
+model_ocsvm = OneClassSVM(kernel='rbf', nu=0.05, gamma='scale') 
+model_ocsvm.fit(X_train)
+anomaly_scores = model_ocsvm.decision_function(X_test)
+
+# Set anomaly threshold
+threshold = -0.1  # Adjust as needed
+
+# Create binary predictions
+y_pred = [1 if score < threshold else 0 for score in anomaly_scores]
+
+# Calculate evaluation metrics
+recall = recall_score(y_test, y_pred)
+precision = precision_score(y_test, y_pred)
+# ... other metrics
+
+print(f"Recall: {recall:.4f}, Precision: {precision:.4f}")
+#%%
+# --- Hyperparameter Tuning for Isolation Forest ---
+from imblearn.over_sampling import SMOTE
+from sklearn.model_selection import GridSearchCV, StratifiedKFold
+from sklearn.ensemble import IsolationForest
+from sklearn.metrics import classification_report, roc_auc_score, confusion_matrix
+from sklearn.pipeline import Pipeline
+from sklearn.exceptions import UndefinedMetricWarning  # Import UndefinedMetricWarning
+import warnings
+warnings.filterwarnings("ignore", category=UndefinedMetricWarning)
+param_grid = {
+    'n_estimators': [50, 100, 200],
+    'max_samples': ['auto', 128, 256],
+    'contamination': [0.001, 0.0017, 0.002], 
+}
+
+pipeline = Pipeline([
+    ('smote', SMOTE(random_state=42)), 
+    ('model', IsolationForest(random_state=42))
+])
+
+grid_search = GridSearchCV(
+    IsolationForest(random_state=42),
+    param_grid,
+    cv=StratifiedKFold(n_splits=10, shuffle=True, random_state=42), 
+    scoring='recall_macro'
+)
+# Fit the GridSearchCV object to the data
+grid_search.fit(X_train, y_train)  # This line is essential!
+
+# Now you can access best_params_ and best_estimator_
+print("Best parameters:", grid_search.best_params_)
+model_if = grid_search.best_estimator_
+
+# --- Evaluate the tuned Isolation Forest model ---
+# Get anomaly scores and predictions
+anomaly_scores_if = model_if.decision_function(X_test)
+y_pred_if = model_if.predict(X_test)
+
+# Evaluate the model
+print(classification_report(y_test, y_pred_if))
+print("AUC-ROC Score:", roc_auc_score(y_test, y_pred_if))
+print("Confusion Matrix:\n", confusion_matrix(y_test, y_pred_if))
+#%%
+'''
+While unsupervised learning methods like Isolation Forest can be applied to credit card fraud detection, 
+they often face challenges due to the nature of the dataset:
+
+* High dimensionality
+* Complex relationships between features and fraudulent behavior
+* Extreme class imbalance
+* Evolving fraud patterns
+
+Supervised learning methods often outperform unsupervised methods in this domain because they can learn 
+directly from labeled data, identify explicit fraud patterns, and adapt to new fraud patterns more easily.
+
+However, unsupervised learning remains valuable for exploratory analysis, identifying unknown fraud types, 
+and situations where labeled data is scarce. A hybrid approach combining supervised and unsupervised techniques 
+can often be the most effective strategy. 
+'''
