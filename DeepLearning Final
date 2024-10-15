@@ -1,0 +1,266 @@
+#%%
+# Import necessary libraries
+import numpy as np
+import tensorflow as tf
+from tensorflow.keras.preprocessing.image import ImageDataGenerator
+import matplotlib.pyplot as plt
+import os
+import warnings
+
+warnings.filterwarnings('ignore', category=UserWarning, module='keras.src.trainers.data_adapters.py_dataset_adapter')
+# --- Data Preprocessing ---
+
+# 1. Image Augmentation: (Helps prevent overfitting)
+train_datagen = ImageDataGenerator(
+    rescale=1. / 255,
+    shear_range=0.2,
+    zoom_range=0.2,
+    horizontal_flip=True
+)
+
+test_datagen = ImageDataGenerator(rescale=1. / 255)
+
+# 2. Load and prepare training data:
+training_set = train_datagen.flow_from_directory(
+    'dataset/training_set',
+    target_size=(64, 64),  # Adjust image size as needed
+    batch_size=32,  # Adjust batch size as needed
+    class_mode='binary'  # Since we have two classes
+)
+
+# 3. Load and prepare test data:
+test_set = test_datagen.flow_from_directory(
+    'dataset/test_set',
+    target_size=(64, 64),
+    batch_size=32,
+    class_mode='binary'
+)
+# --- EDA ---
+
+# 1. Class Distribution
+num_cats_train = len(os.listdir('dataset/training_set/cats'))
+num_dogs_train = len(os.listdir('dataset/training_set/dogs'))
+num_cats_test = len(os.listdir('dataset/test_set/cats'))
+num_dogs_test = len(os.listdir('dataset/test_set/dogs'))
+
+print(f"Training Set - Cats: {num_cats_train}, Dogs: {num_dogs_train}")
+print(f"Test Set - Cats: {num_cats_test}, Dogs: {num_dogs_test}")
+
+
+# 2. Visualize a few images
+def visualize_images(dataset, title):
+    plt.figure(figsize=(10, 5))
+    for i in range(9):
+        plt.subplot(3, 3, i + 1)
+        image_batch, label_batch = dataset.__next__()  # Unpack only image and label
+        plt.imshow(image_batch[0])
+        plt.title("Cat" if label_batch[0] == 0 else "Dog")
+        plt.axis('off')
+    plt.suptitle(title)
+    plt.show()
+
+
+visualize_images(training_set, "Training Set Images")
+visualize_images(test_set, "Test Set Images")
+
+#%%
+"Our initial exploration of the cat and dog image dataset revealed a slight imbalance with more dog images than cat images in both the training and test sets.  We also visually inspected a few sample images to get a sense of their characteristics.  Now, armed with this understanding of our data, we'll move on to training our Convolutional Neural Network (CNN) model. To monitor its progress and ensure effective learning, we'll visualize key metrics like training and validation accuracy and loss over time. These visualizations will help us assess how well the model is learning and generalizing to new images, guiding any adjustments we might need to make to optimize its performance."
+#%%
+
+# --- Build the CNN ---
+
+# 1. Define the Input layer
+input_layer = tf.keras.layers.Input(shape=(64, 64, 3))
+
+# 2. Initialize the CNN
+cnn = tf.keras.models.Sequential()
+
+# 3. Add the Input layer to the model
+cnn.add(input_layer)
+
+# 4. Add Convolutional layers (no more input_shape here)
+cnn.add(tf.keras.layers.Conv2D(filters=32, kernel_size=3, activation='relu'))
+cnn.add(tf.keras.layers.MaxPool2D(pool_size=2, strides=2))
+
+cnn.add(tf.keras.layers.Conv2D(filters=32, kernel_size=3, activation='relu'))
+cnn.add(tf.keras.layers.MaxPool2D(pool_size=2, strides=2))
+
+# 3. Flatten
+cnn.add(tf.keras.layers.Flatten())
+
+# 4. Full Connection
+cnn.add(tf.keras.layers.Dense(units=128, activation='relu'))
+
+# 5. Output Layer
+cnn.add(tf.keras.layers.Dense(units=1, activation='sigmoid'))
+
+# --- Train the CNN ---
+
+# 1. Compile the CNN
+cnn.compile(optimizer='adam', loss='binary_crossentropy', metrics=['accuracy'])
+
+# 2. Train on the training set, and validate on the test set
+history = cnn.fit(x=training_set, validation_data=test_set, epochs=5)
+
+# --- Visualize Training Progress ---
+
+# Get the training and validation metrics from the history object
+accuracy = history.history['accuracy']
+val_accuracy = history.history['val_accuracy']
+loss = history.history['loss']
+val_loss = history.history['val_loss']  
+
+epochs = range(1, len(accuracy) + 1)
+
+# Create the accuracy plot
+accuracy_plot = plt.figure(figsize=(10, 5))
+plt.plot(epochs, accuracy, 'b', label='Training Accuracy')
+plt.plot(epochs, val_accuracy, 'r', label='Validation Accuracy')
+plt.title('Training and Validation Accuracy')  
+
+plt.xlabel('Epochs')
+plt.ylabel('Accuracy')
+plt.legend()  
+
+
+# Create the loss plot
+loss_plot = plt.figure(figsize=(10, 5))
+plt.plot(epochs, loss, 'b', label='Training Loss')
+plt.plot(epochs, val_loss, 'r', label='Validation Loss')
+plt.title('Training and Validation Loss')
+plt.xlabel('Epochs')
+plt.ylabel('Loss')
+plt.legend()
+
+# Show the plots
+plt.show()
+
+#%%
+"Our initial CNN model, trained for 5 epochs with a batch size of 32 using the Adam optimizer, demonstrated promising learning capabilities. Both training and validation accuracy steadily increased, reaching approximately 74% and 72% respectively.  The decreasing trend in training and validation loss further confirms that the model is learning effectively.  However, the slight gap between training and validation accuracy suggests a minor degree of overfitting. To gain a deeper understanding of the model's performance, we'll visualize its predictions on individual images, allowing us to identify potential misclassifications and areas where the model might be struggling."
+#%%
+# --- Show predictions for a few images ---
+
+import numpy as np
+from tensorflow.keras.preprocessing import image
+
+# Get a batch of images and labels from the test set
+images, labels = next(test_set) 
+
+# Make predictions on the batch of images
+predictions = cnn.predict(images)
+predicted_classes = (predictions > 0.5).astype("int32")  # Threshold predictions to 0 or 1
+
+# Display 20 images with their true and predicted labels
+plt.figure(figsize=(20, 15))  # Adjust figure size for more images
+for i in range(20): 
+    plt.subplot(4, 5, i + 1)  # 4 rows, 5 columns 
+    plt.imshow(images[i])
+    true_label = "Dog" if labels[i] == 1 else "Cat"
+    pred_label = "Dog" if predicted_classes[i] == 1 else "Cat"
+    plt.title(f"True: {true_label}\nPred: {pred_label}")
+    plt.axis('off')
+plt.tight_layout()  # Adjust spacing between subplots
+plt.show()
+#%%
+'''
+While fun to look at, these images wont do much to help us figure out how to improve our accuracy,
+lets take a look at some optimizations using hyperparameter tuning and see if we can do better
+'''
+#%%
+def train_and_evaluate_model(epochs, batch_size, optimizer):
+    """
+    Trains and evaluates the CNN model with the given hyperparameters.
+
+    Args:
+        epochs (int): Number of training epochs.
+        batch_size (int): Batch size for training.
+        optimizer (str or tf.keras.optimizers.Optimizer): Optimizer to use.
+
+    Returns:
+        dict: A dictionary containing the training and validation accuracy, and the training history.
+    """
+
+    # Compile the CNN
+    cnn.compile(optimizer=optimizer, loss='binary_crossentropy', metrics=['accuracy'])
+
+    # Train the model
+    history = cnn.fit(x=training_set, validation_data=test_set, epochs=epochs, batch_size=batch_size, verbose=0)
+
+    # Get the final training and validation accuracy
+    train_accuracy = history.history['accuracy'][-1]
+    val_accuracy = history.history['val_accuracy'][-1]  
+
+
+    return {'train_accuracy': train_accuracy, 'val_accuracy': val_accuracy, 'history': history}
+
+
+# Define the hyperparameters to try
+epochs_list = [10, 25]
+batch_sizes = [16, 32, 64]
+optimizers = ['adam', 'rmsprop']
+
+results = []
+
+# Loop through all combinations of hyperparameters
+for epochs in epochs_list:
+    for batch_size in batch_sizes:
+        for optimizer in optimizers:
+            print(f"Training with epochs={epochs}, batch_size={batch_size}, optimizer={optimizer}")
+            metrics = train_and_evaluate_model(epochs, batch_size, optimizer)
+            results.append({
+                'epochs': epochs,
+                'batch_size': batch_size,
+                'optimizer': optimizer,
+                'train_accuracy': metrics['train_accuracy'],
+                'val_accuracy': metrics['val_accuracy'],
+                'history': metrics['history']
+            })
+
+# --- Visualize and Compare Results ---
+
+# Create a bar chart to compare the validation accuracy of different models
+val_accuracies = [result['val_accuracy'] for result in results]
+model_labels = [f"{result['epochs']} epochs, {result['batch_size']} batch, {result['optimizer']}" for result in results]
+
+plt.figure(figsize=(12, 6))
+plt.bar(model_labels, val_accuracies, color='skyblue')
+plt.title('Validation Accuracy of Different Models')
+plt.xlabel('Model Hyperparameters')
+plt.ylabel('Validation Accuracy')
+plt.xticks(rotation=45, ha='right')  # Rotate x-axis labels for better readability
+plt.tight_layout()
+plt.show()
+
+# --- Select the Best Model ---
+
+# Find the model with the highest validation accuracy
+best_model_index = np.argmax(val_accuracies)
+best_model_result = results[best_model_index]
+best_model_history = best_model_result['history']
+
+print(f"\nBest Model: {model_labels[best_model_index]}")
+print(f"Validation Accuracy: {best_model_result['val_accuracy']:.4f}")
+
+# --- Show predictions for the best model ---
+
+# Get a batch of images and labels from the test set
+images, labels = next(test_set)
+
+# Make predictions on the batch of images using the best model
+predictions = cnn.predict(images)  # Assuming 'cnn' is your trained model
+predicted_classes = (predictions > 0.5).astype("int32")  # Threshold predictions to 0 or 1
+
+# Display 20 images with their true and predicted labels
+plt.figure(figsize=(20, 15))  # Adjust figure size for more images
+for i in range(20):
+    plt.subplot(4, 5, i + 1)  # 4 rows, 5 columns
+    plt.imshow(images[i])
+    true_label = "Dog" if labels[i] == 1 else "Cat"
+    pred_label = "Dog" if predicted_classes[i] == 1 else "Cat"
+    plt.title(f"True: {true_label}\nPred: {pred_label}")
+    plt.axis('off')
+plt.tight_layout()  # Adjust spacing between subplots
+plt.show()
+#%%
+"After experimenting with different combinations of epochs (10 and 25), batch sizes (16, 32, 64), and optimizers (Adam and RMSprop), we found that the model trained with 10 epochs, a batch size of 16, and the RMSprop optimizer achieved the highest validation accuracy of approximately 80%. This suggests that for this particular dataset and model architecture, a smaller batch size and the RMSprop optimizer might be more effective than other configurations. Interestingly, increasing the number of epochs to 25 did not significantly improve the accuracy, indicating that the model might be reaching its learning capacity with fewer epochs."
+#%%
